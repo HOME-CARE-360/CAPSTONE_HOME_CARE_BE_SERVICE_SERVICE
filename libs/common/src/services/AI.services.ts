@@ -9,7 +9,7 @@ export class AIService {
         if (!existsSync(MODEL_PATH)) {
             console.log('🧠 Model not found. Training...')
             await PythonShell.run('train_model.py', {
-                pythonPath: '/app/venv/bin/python3',
+                pythonPath: 'python3',
                 scriptPath: '/app',
             });
         }

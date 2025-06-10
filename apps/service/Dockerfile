@@ -21,7 +21,7 @@ RUN pnpm run build service
 
 COPY requirements.txt ./
 RUN apk update \
- && apk add --no-cache python3 py3-pip  build-base python3-dev \
+ && apk add --no-cache python3 py3-pip build-base python3-dev \
  && rm -rf /var/cache/apk/* \
  && python3 -m venv --copies venv \
  && venv/bin/python -m pip install --upgrade pip \
@@ -34,7 +34,7 @@ ENV NODE_ENV=${NODE_ENV}
 
 WORKDIR /usr/src/app
 RUN apk update \
- && apk add --no-cache python3 \
+ && apk add --no-cache python3 py3-pip \
  && rm -rf /var/cache/apk/*
 
 COPY package.json ./
@@ -47,4 +47,5 @@ COPY --from=development /usr/src/app/node_modules /usr/src/app/node_modules
 COPY --from=development /usr/src/app/venv        /usr/src/app/venv
 COPY train_model.py ./
 COPY predict.py ./
+RUN pip3 install --no-cache-dir -r requirements.txt
 CMD ["node", "dist/apps/service/main"]

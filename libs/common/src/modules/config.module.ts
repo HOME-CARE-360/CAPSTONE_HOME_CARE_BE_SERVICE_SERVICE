@@ -21,9 +21,9 @@ config({
                 if (!parsed.success) {
                     console.error('❌ Biến môi trường không hợp lệ');
                     console.error(parsed.error.format());
-                    process.exit(1);
+                    process.exit(1)
                 }
-                return parsed.data;
+                return parsed.data
             },
         }),
     ],
