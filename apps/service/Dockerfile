@@ -7,25 +7,32 @@ COPY pnpm-lock.yaml ./
 COPY nest-cli.json ./
 COPY tsconfig.build.json ./
 COPY tsconfig.json ./
+
 RUN npm install -g pnpm
 RUN pnpm install
 
 COPY apps/service apps/service
 COPY libs libs
-
 COPY prisma prisma
 
 RUN pnpm prisma generate
-
 RUN pnpm run build service
 
 COPY requirements.txt ./
-RUN apk update \
- && apk add --no-cache python3 py3-pip build-base python3-dev \
- && rm -rf /var/cache/apk/* \
- && python3 -m venv --copies venv \
- && venv/bin/python -m pip install --upgrade pip \
- && venv/bin/python -m pip install -r requirements.txt
+
+RUN apk update && apk add --no-cache \
+  python3 \
+  py3-pip \
+  python3-dev \
+  build-base \
+  libffi-dev \
+  openssl-dev \
+  && python3 -m venv /venv \
+  && /venv/bin/pip install --upgrade pip \
+  && /venv/bin/pip install --no-cache-dir -r requirements.txt \
+  && rm -rf /var/cache/apk/*
+
+# -------------------- PRODUCTION STAGE -------------------------
 
 FROM node:alpine AS production
 
@@ -33,19 +40,23 @@ ARG NODE_ENV=production
 ENV NODE_ENV=${NODE_ENV}
 
 WORKDIR /usr/src/app
-RUN apk update \
- && apk add --no-cache python3 py3-pip \
- && rm -rf /var/cache/apk/*
+
+RUN apk update && apk add --no-cache python3 \
+  && rm -rf /var/cache/apk/*
 
 COPY package.json ./
 COPY pnpm-lock.yaml ./
+
 RUN npm install -g pnpm
 RUN pnpm install --prod
 
 COPY --from=development /usr/src/app/dist ./dist
-COPY --from=development /usr/src/app/node_modules /usr/src/app/node_modules
-COPY --from=development /usr/src/app/venv        /usr/src/app/venv
+COPY --from=development /usr/src/app/node_modules ./node_modules
+COPY --from=development /venv /venv
 COPY train_model.py ./
 COPY predict.py ./
-RUN pip3 install --no-cache-dir -r requirements.txt
+
+# Use Python from virtualenv
+ENV PATH="/venv/bin:$PATH"
+
 CMD ["node", "dist/apps/service/main"]
