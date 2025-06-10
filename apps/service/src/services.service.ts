@@ -1,12 +1,12 @@
 import { Injectable } from '@nestjs/common'
 import { PythonShell } from 'python-shell'
-import { PrismaService } from 'src/shared/services/prisma.service'
-import { ServicesRepository } from './services.repo'
-import { GetServicesQueryType } from './services.model'
+
+import { PrismaService } from 'libs/common/src/services/prisma.service'
+import { ShareServicesRepository } from 'libs/common/src/repositories/shared-service.repo'
 
 @Injectable()
 export class ServicesService {
-    constructor(private readonly prisma: PrismaService, private readonly servicesRepository: ServicesRepository) { }
+    constructor(private readonly prisma: PrismaService, private readonly servicesRepository: ShareServicesRepository) { }
 
     async getRecommendation(customerId: number) {
         const customer = await this.prisma.customerProfile.findUnique({
