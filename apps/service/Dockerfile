@@ -1,4 +1,3 @@
-
 FROM node:alpine AS development
 
 WORKDIR /usr/src/app
@@ -18,15 +17,12 @@ COPY prisma prisma
 
 RUN pnpm prisma generate
 
-
-
-
 RUN pnpm run build service
+
 COPY requirements.txt ./
-RUN apt-get update \
- && apt-get install -y --no-install-recommends python3 python3-venv python3-pip python3-distutils \
- && rm -rf /var/lib/apt/lists/* \
- \
+RUN apk update \
+ && apk add --no-cache python3 py3-pip py3-venv \
+ && rm -rf /var/cache/apk/* \
  && python3 -m venv --copies venv \
  && venv/bin/python -m pip install --upgrade pip \
  && venv/bin/python -m pip install -r requirements.txt
@@ -37,14 +33,14 @@ ARG NODE_ENV=production
 ENV NODE_ENV=${NODE_ENV}
 
 WORKDIR /usr/src/app
-RUN apt-get update \
- && apt-get install -y --no-install-recommends python3 \
- && rm -rf /var/lib/apt/lists/*
+RUN apk update \
+ && apk add --no-cache python3 \
+ && rm -rf /var/cache/apk/*
+
 COPY package.json ./
 COPY pnpm-lock.yaml ./
 RUN npm install -g pnpm
 RUN pnpm install --prod
-
 
 COPY --from=development /usr/src/app/dist ./dist
 COPY --from=development /usr/src/app/node_modules /usr/src/app/node_modules
