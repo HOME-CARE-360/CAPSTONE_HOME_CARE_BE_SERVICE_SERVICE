@@ -11,7 +11,7 @@ COPY tsconfig.json ./
 RUN npm install -g pnpm
 RUN pnpm install
 
-COPY apps/auth apps/auth
+COPY apps/service apps/service
 COPY libs libs
 
 COPY prisma prisma
@@ -21,7 +21,7 @@ RUN pnpm prisma generate
 
 
 
-RUN pnpm run build auth
+RUN pnpm run build service
 COPY requirements.txt ./
 RUN apt-get update \
  && apt-get install -y --no-install-recommends python3 python3-venv python3-pip python3-distutils \
@@ -51,4 +51,4 @@ COPY --from=development /usr/src/app/node_modules /usr/src/app/node_modules
 COPY --from=development /usr/src/app/venv        /usr/src/app/venv
 COPY train_model.py ./
 COPY predict.py ./
-CMD ["node", "dist/apps/auth/main"]
+CMD ["node", "dist/apps/service/main"]
