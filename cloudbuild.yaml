@@ -21,6 +21,6 @@ steps:
       - 'CLOUDSDK_COMPUTE_REGION=asia-east1'
       - 'CLOUDSDK_CONTAINER_CLUSTER=autopilot-cluster-1'
       - 'CLOUDSDK_CORE_PROJECT=home-care-360'
+
 options:
   logging: CLOUD_LOGGING_ONLY
-  
