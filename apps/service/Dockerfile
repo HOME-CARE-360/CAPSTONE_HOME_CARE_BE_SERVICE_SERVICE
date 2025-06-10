@@ -21,7 +21,7 @@ RUN pnpm run build service
 
 COPY requirements.txt ./
 RUN apk update \
- && apk add --no-cache python3 py3-pip py3-venv \
+ && apk add --no-cache python3 py3-pip \
  && rm -rf /var/cache/apk/* \
  && python3 -m venv --copies venv \
  && venv/bin/python -m pip install --upgrade pip \
