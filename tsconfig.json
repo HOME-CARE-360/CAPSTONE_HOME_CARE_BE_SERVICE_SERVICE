@@ -1,0 +1,48 @@
+{
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "allowJs": true,
+    "module": "commonjs",
+    "declaration": true,
+    "removeComments": true,
+    "plugins": [
+      {
+        "name": "zod-to-ts-plugin"
+      }
+    ],
+    "moduleResolution": "node",
+    "types": [
+      "node",
+      "Multer"
+    ],
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true,
+    "allowSyntheticDefaultImports": true,
+    "target": "ES2022",
+    "sourceMap": true,
+    "outDir": "./dist",
+    "baseUrl": "./",
+    "incremental": true,
+    "skipLibCheck": true,
+    "strictNullChecks": true,
+    "forceConsistentCasingInFileNames": true,
+    "noImplicitAny": false,
+    "strictBindCallApply": false,
+    "esModuleInterop": true,
+    "noFallthroughCasesInSwitch": false,
+    "paths": {}
+  },
+  "ts-node": {
+    "require": [
+      "tsconfig-paths/register"
+    ]
+  },
+  "paths": {
+    "@app/common": [
+      "libs/common/src"
+    ],
+    "@app/common/*": [
+      "libs/common/src/*"
+    ]
+  }
+}
