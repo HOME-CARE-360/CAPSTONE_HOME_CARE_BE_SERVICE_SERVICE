@@ -10,7 +10,7 @@ export class AIService {
             console.log('🧠 Model not found. Training...')
             await PythonShell.run('train_model.py', {
                 pythonPath: 'python3',
-                scriptPath: '/app',
+                scriptPath: process.cwd(),
             });
         }
     }
