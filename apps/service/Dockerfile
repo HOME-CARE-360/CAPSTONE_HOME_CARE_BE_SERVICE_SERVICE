@@ -41,7 +41,7 @@ ENV NODE_ENV=${NODE_ENV}
 
 WORKDIR /usr/src/app
 
-RUN apk update && apk add --no-cache python3 \
+RUN apk update && apk add --no-cache python3 libgomp \
   && rm -rf /var/cache/apk/*
 
 COPY package.json ./
