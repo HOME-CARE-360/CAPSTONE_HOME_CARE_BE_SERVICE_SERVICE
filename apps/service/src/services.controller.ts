@@ -17,6 +17,7 @@ export class ServicesController {
   }
 
   @IsPublic()
+  @MessagePattern({ cmd: 'get-list-service' })
   @ZodSerializerDto(GetServicesResDTO)
   list(@Payload() query: GetServicesQueryDTO) {
     return this.servicesService.getListService({
