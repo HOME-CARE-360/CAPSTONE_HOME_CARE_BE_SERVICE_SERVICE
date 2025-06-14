@@ -181,8 +181,12 @@ export class ShareServicesRepository {
         orderBy: OrderByType
         sortBy: SortByType
     }): Promise<GetServicesForProviderResType> {
+
+        console.log(page, limit);
+
         const skip = (page - 1) * limit
         const take = limit
+        console.log(skip, take);
         let where: Prisma.ServiceWhereInput = {
 
             deletedAt: null,
