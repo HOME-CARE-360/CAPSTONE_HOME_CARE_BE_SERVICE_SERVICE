@@ -18,6 +18,7 @@ export class ShareServicesRepository {
     constructor(private readonly prismaService: PrismaService) { }
     async createService(service: ServiceType & { categories: number[] }, userId: number, providerId: number) {
 
+
         await this.prismaService.service.create({
             data: {
                 ...service,
@@ -53,6 +54,7 @@ export class ShareServicesRepository {
         orderBy: OrderByType
         sortBy: SortByType
     }): Promise<GetServicesResType> {
+        console.log("cao r");
         const skip = (page - 1) * limit
         const take = limit
         const where: Prisma.ServiceWhereInput = {
