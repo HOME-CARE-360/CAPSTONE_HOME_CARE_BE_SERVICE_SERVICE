@@ -1,6 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../services/prisma.service";
-import { CreateCategoryBodyType } from "../request-response-type/category/category.model";
+import { CreateCategoryBodyType, GetListCategoryQueryType } from "../request-response-type/category/category.model";
+import { Prisma } from "@prisma/client";
 
 @Injectable()
 export class SharedCategoryRepository {
@@ -21,8 +22,13 @@ export class SharedCategoryRepository {
             select: { id: true }
         });
     }
-    async findAllCategory() {
+    async findAllCategory(query: GetListCategoryQueryType) {
+        const where: Prisma.CategoryWhereInput = {}
+        if (query.name) {
+            where.name = query.name
+        }
         const categories = await this.prismaService.category.findMany({
+            where,
             select: {
                 id: true, logo: true, name: true, parentCategory: {
                     select: {
@@ -31,7 +37,9 @@ export class SharedCategoryRepository {
                         logo: true
                     }
                 }
-            },
+            }, orderBy: {
+                [query.sortBy]: query.orderBy
+            }
         });
         return categories
 
