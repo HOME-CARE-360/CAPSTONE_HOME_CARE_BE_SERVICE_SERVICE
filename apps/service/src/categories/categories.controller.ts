@@ -13,7 +13,7 @@ export class CategoriesController {
         const a = await this.categoriesService.findAllCategory(query);
         return a
     }
-    @MessagePattern({ cmd: "get-list-category" })
+    @MessagePattern({ cmd: "create-category" })
     async createCategory(@Payload() { body }: { body: CreateCategoryBodyType }) {
         const a = await this.categoriesService.createCategory(body);
         return a
