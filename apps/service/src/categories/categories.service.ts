@@ -3,8 +3,7 @@ import { Injectable } from '@nestjs/common'
 import { PrismaService } from 'libs/common/src/services/prisma.service'
 
 import { SharedCategoryRepository } from 'libs/common/src/repositories/shared-category.repo'
-import { CreateCategoryBodyType, GetListCategoryQueryType } from 'libs/common/src/request-response-type/category/category.model'
-import { CategoryAlreadyExistException } from 'libs/common/src/errors/share-category.error'
+import { GetListCategoryQueryType } from 'libs/common/src/request-response-type/category/category.model'
 
 @Injectable()
 export class CategoriesService {
@@ -12,9 +11,5 @@ export class CategoriesService {
     async findAllCategory(query: GetListCategoryQueryType) {
 
         return await this.categoriesRepository.findAllCategory(query)
-    }
-    async createCategory(body: CreateCategoryBodyType) {
-        if ((await this.categoriesRepository.findUniqueName([body.name])).length > 0) throw CategoryAlreadyExistException([body.name])
-        return await this.categoriesRepository.createCategory(body)
     }
 }

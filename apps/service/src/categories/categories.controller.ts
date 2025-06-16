@@ -1,7 +1,7 @@
-import { Body, Controller, Post } from "@nestjs/common";
+import { Controller } from "@nestjs/common";
 import { CategoriesService } from "./categories.service";
 import { MessagePattern, Payload } from "@nestjs/microservices";
-import { CreateCategoryBodyType, GetListCategoryQueryType } from "libs/common/src/request-response-type/category/category.model";
+import { GetListCategoryQueryType } from "libs/common/src/request-response-type/category/category.model";
 
 @Controller('categories')
 export class CategoriesController {
@@ -13,10 +13,4 @@ export class CategoriesController {
         const a = await this.categoriesService.findAllCategory(query);
         return a
     }
-    @MessagePattern({ cmd: "create-category" })
-    async createCategory(@Payload() { body }: { body: CreateCategoryBodyType }) {
-        const a = await this.categoriesService.createCategory(body);
-        return a
-    }
-
 }

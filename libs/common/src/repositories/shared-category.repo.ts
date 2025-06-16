@@ -23,7 +23,9 @@ export class SharedCategoryRepository {
         });
     }
     async findAllCategory(query: GetListCategoryQueryType) {
-        const where: Prisma.CategoryWhereInput = {}
+        const where: Prisma.CategoryWhereInput = {
+            deletedAt: null
+        }
         if (query.name) {
             where.name = query.name
         }

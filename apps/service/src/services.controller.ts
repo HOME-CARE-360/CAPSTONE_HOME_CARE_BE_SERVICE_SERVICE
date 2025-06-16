@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseIntPipe, Post } from "@nestjs/common";
+import { Body, Controller, Get, Param, ParseIntPipe } from "@nestjs/common";
 
 import { IsPublic } from "libs/common/src/decorator/auth.decorator";
 import { ZodSerializerDto } from "nestjs-zod";
