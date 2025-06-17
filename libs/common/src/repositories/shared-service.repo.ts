@@ -55,6 +55,8 @@ export class ShareServicesRepository {
         sortBy: SortByType
     }): Promise<GetServicesResType> {
         console.log("cao r");
+        console.log(limit, page);
+
         const skip = (page - 1) * limit
         const take = limit
         const where: Prisma.ServiceWhereInput = {
