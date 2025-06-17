@@ -47,20 +47,20 @@ export class ServicesService {
             }
         })
     }
-    async getListService(props: { query: GetServicesQueryType }) {
-        console.log(props.query);
+    async getListService(props: GetServicesQueryType) {
+        console.log(props);
 
         const data = await this.servicesRepository.list({
-            page: props.query.page,
-            limit: props.query.limit,
-            providerIds: props.query.providerIds,
-            minPrice: props.query.minPrice,
-            maxPrice: props.query.maxPrice,
-            categories: props.query.categories,
-            name: props.query.name,
-            createdById: props.query.createdById,
-            orderBy: props.query.orderBy,
-            sortBy: props.query.sortBy,
+            page: props.page,
+            limit: props.limit,
+            providerIds: props.providerIds,
+            minPrice: props.minPrice,
+            maxPrice: props.maxPrice,
+            categories: props.categories,
+            name: props.name,
+            createdById: props.createdById,
+            orderBy: props.orderBy,
+            sortBy: props.sortBy,
         })
         return data
     }

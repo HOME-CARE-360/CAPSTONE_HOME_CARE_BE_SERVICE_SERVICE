@@ -22,8 +22,11 @@ export class ServicesController {
   @MessagePattern({ cmd: 'get-list-service' })
   // @Post("get-list-service")
   @ZodSerializerDto(GetServicesResDTO)
-  list(@Payload() query: GetServicesQueryType) {
-    return this.servicesService.getListService({ query })
+  list(@Payload() { query }: { query: GetServicesQueryType }) {
+    console.log(typeof query);
+    console.log(query);
+
+    return this.servicesService.getListService(query)
   }
   @MessagePattern({ cmd: 'detail' })
   @IsPublic()
