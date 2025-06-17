@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseIntPipe } from "@nestjs/common";
+import { Body, Controller, Get, Param, ParseIntPipe, Post } from "@nestjs/common";
 
 import { IsPublic } from "libs/common/src/decorator/auth.decorator";
 import { ZodSerializerDto } from "nestjs-zod";
@@ -13,15 +13,16 @@ export class ServicesController {
   constructor(private readonly servicesService: ServicesService) { }
 
   // @UseGuards(AccessTokenGuard)
-  @Get(':customerId')
-  async recommendPackage(@Param('customerId', ParseIntPipe) customerId: number) {
-    return await this.servicesService.getRecommendation(customerId);
-  }
+  // @Get(':customerId')
+  // async recommendPackage(@Param('customerId', ParseIntPipe) customerId: number) {
+  //   return await this.servicesService.getRecommendation(customerId);
+  // }
 
   @IsPublic()
   @MessagePattern({ cmd: 'get-list-service' })
+  // @Post("get-list-service")
   @ZodSerializerDto(GetServicesResDTO)
-  list(@Body() query: GetServicesQueryType) {
+  list(@Payload() query: GetServicesQueryType) {
     return this.servicesService.getListService({ query })
   }
   @MessagePattern({ cmd: 'detail' })
