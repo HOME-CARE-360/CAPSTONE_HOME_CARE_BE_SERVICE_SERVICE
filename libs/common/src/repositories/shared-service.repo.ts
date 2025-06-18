@@ -335,6 +335,8 @@ export class ShareServicesRepository {
                     }
                 }
             })
+            console.log(data);
+
             return data as ServiceType
         } catch (error) {
             if (isNotFoundPrismaError(error)) {

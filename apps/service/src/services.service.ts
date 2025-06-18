@@ -3,7 +3,7 @@ import { PythonShell } from 'python-shell'
 
 import { PrismaService } from 'libs/common/src/services/prisma.service'
 import { ShareServicesRepository } from 'libs/common/src/repositories/shared-service.repo'
-import { GetServicesQueryType } from 'libs/common/src/request-response-type/service/services.model'
+import { GetServicesQueryType, } from 'libs/common/src/request-response-type/service/services.model'
 
 @Injectable()
 export class ServicesService {
@@ -69,6 +69,5 @@ export class ServicesService {
         return data
 
     }
-
 
 }
