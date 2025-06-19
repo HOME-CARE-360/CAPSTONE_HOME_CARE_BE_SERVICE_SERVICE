@@ -256,7 +256,7 @@ export class ShareServicesRepository {
                     // },
                     categories: {
                         select: {
-                            name: true
+                            name: true, logo: true
                         }
                     }
                 },
@@ -321,18 +321,19 @@ export class ShareServicesRepository {
                     id: serviceId,
                     deletedAt: null
                 },
-                select: {
-                    name: true,
-                    basePrice: true,
-                    virtualPrice: true,
-                    images: true,
-                    durationMinutes: true,
+                include: {
                     categories: {
                         select: {
                             logo: true,
                             name: true
                         }
                     }
+                }, omit: {
+                    deletedById: true,
+                    updatedById: true,
+                    deletedAt: true,
+                    createdById: true,
+
                 }
             })
             console.log(data);

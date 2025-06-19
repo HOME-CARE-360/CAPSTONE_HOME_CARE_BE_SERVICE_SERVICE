@@ -23,8 +23,7 @@ export class ServicesController {
   // @Post("get-list-service")
   @ZodSerializerDto(GetServicesResDTO)
   list(@Payload() { query }: { query: GetServicesQueryType }) {
-    console.log(typeof query);
-    console.log(query);
+
 
     return this.servicesService.getListService(query)
   }
