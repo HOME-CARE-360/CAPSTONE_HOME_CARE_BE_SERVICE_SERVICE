@@ -324,6 +324,7 @@ export class ShareServicesRepository {
                 include: {
                     categories: {
                         select: {
+                            id: true,
                             logo: true,
                             name: true
                         }
