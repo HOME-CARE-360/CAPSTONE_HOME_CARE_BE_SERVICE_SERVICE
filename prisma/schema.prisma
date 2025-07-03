@@ -1,6 +1,6 @@
 generator client {
   provider      = "prisma-client-js"
-  // output        = "../node_modules/.prisma/client"
+   output        = "../node_modules/.prisma/client"
   binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
 }
 
@@ -251,6 +251,7 @@ model ServiceProvider {
   verifiedById        Int?
   bookings            Booking[]
   services            Service[]
+  ServiceItem         ServiceItem[]
   user                User                         @relation(fields: [userId], references: [id], onDelete: Cascade)
   verifiedBy          User?                        @relation("VerifiedProviders", fields: [verifiedById], references: [id])
   translationsService ServiceProviderTranslation[]
@@ -300,6 +301,7 @@ model Service {
   description          String                 @default("test description") @db.VarChar(100)
   categoryId           Int
   unit                 Unit                   @default(PER_JOB)
+  status               ServiceStatus          @default(PENDING)
   proposedInBookings   ProposedService[]
   recurringBookings    RecurringBooking[]
   reviews              Review[]
@@ -467,15 +469,6 @@ model ChatMessage {
   customer   CustomerProfile @relation(fields: [customerId], references: [id], onDelete: Cascade)
 }
 
-/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
-model spatial_ref_sys {
-  srid      Int     @id
-  auth_name String? @db.VarChar(256)
-  auth_srid Int?
-  srtext    String? @db.VarChar(2048)
-  proj4text String? @db.VarChar(2048)
-}
-
 model ServiceItem {
   id                   Int                    @id @default(autoincrement())
   name                 String                 @db.VarChar(255)
@@ -490,6 +483,8 @@ model ServiceItem {
   model                String?                @db.VarChar(255)
   stockQuantity        Int                    @default(0)
   unit                 Unit                   @default(PER_ITEM)
+  providerId           Int
+  ServiceProvider      ServiceProvider        @relation(fields: [providerId], references: [id])
   Service_ServiceItems Service_ServiceItems[]
 }
 
@@ -520,12 +515,6 @@ model Service_ServiceItems {
   ServiceItem   ServiceItem @relation(fields: [serviceItemId], references: [id], onDelete: Cascade)
 
   @@id([serviceId, serviceItemId])
-}
-
-model chat_histories {
-  id         Int    @id @default(autoincrement())
-  session_id String @db.VarChar(255)
-  message    Json
 }
 
 enum UserStatus {
@@ -618,7 +607,6 @@ enum RequestStatus {
   PENDING
   IN_PROGRESS
   ESTIMATED
-  REJECTED
 }
 
 enum Unit {
@@ -626,4 +614,10 @@ enum Unit {
   PER_ITEM
   PER_SQUARE_METER
   PER_JOB
+}
+
+enum ServiceStatus {
+  PENDING
+  REJECTED
+  ACCEPTED
 }

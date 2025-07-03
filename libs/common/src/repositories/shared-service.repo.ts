@@ -3,7 +3,7 @@ import { PrismaService } from "../services/prisma.service"
 import { ServiceType } from "../models/shared-services.model"
 import { OrderByType, SortBy, SortByType } from "../constants/others.constant"
 import { GetServicesResType } from "../request-response-type/service/services.model"
-import { Prisma } from "@prisma/client"
+import { Prisma, ServiceStatus } from "@prisma/client"
 
 import { isNotFoundPrismaError } from "libs/common/helpers"
 import { ServiceNotFoundException } from "../errors/share-service.error"
@@ -46,6 +46,7 @@ export class ShareServicesRepository {
                 lte: new Date(),
                 not: null,
             },
+            status: ServiceStatus.ACCEPTED,
             deletedAt: null,
             createdById: createdById ? createdById : undefined,
         }
@@ -145,6 +146,7 @@ export class ShareServicesRepository {
         try {
             const data = await this.prismaService.service.findFirstOrThrow({
                 where: {
+                    status: ServiceStatus.ACCEPTED,
                     id: serviceId,
                     deletedAt: null
                 },
