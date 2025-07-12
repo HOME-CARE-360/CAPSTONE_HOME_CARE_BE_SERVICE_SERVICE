@@ -4,7 +4,7 @@ steps:
       [
         'build',
         '-t',
-        'asia-southeast1-docker.pkg.dev/home-care-360/service/production',
+        'asia-southeast1-docker.pkg.dev/melodic-media-465615-c6/service/production',
         '-f',
         'apps/service/Dockerfile',
         '.',
@@ -13,7 +13,7 @@ steps:
     args:
       [
         'push',
-        'asia-southeast1-docker.pkg.dev/home-care-360/service/production',
+        'asia-southeast1-docker.pkg.dev/melodic-media-465615-c6/service/production',
       ]
   - name: 'gcr.io/cloud-builders/kubectl'
     args: ['rollout', 'restart', 'deployment/service']
