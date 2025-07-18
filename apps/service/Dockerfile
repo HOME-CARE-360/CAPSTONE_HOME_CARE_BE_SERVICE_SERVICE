@@ -32,7 +32,6 @@ RUN apk update && apk add --no-cache \
   && /venv/bin/pip install --no-cache-dir -r requirements.txt \
   && rm -rf /var/cache/apk/*
 
-# -------------------- PRODUCTION STAGE -------------------------
 
 FROM node:alpine AS production
 
