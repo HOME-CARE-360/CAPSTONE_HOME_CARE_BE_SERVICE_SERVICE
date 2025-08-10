@@ -115,7 +115,8 @@ export class ShareServicesRepository {
                             logo: true,
                             name: true
                         }
-                    }
+                    },
+                    FavoriteService: true
                 },
                 omit: {
                     deletedAt: true,

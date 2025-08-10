@@ -37,11 +37,11 @@ cur.execute("""
     LEFT JOIN "RewardPoint" rp ON rp."customerId" = cp.id;
 """)
 
-# Tạo dữ liệu huấn luyện
+
 rows = []
 for cid, pts, cnt, rec, msgs, pkg_id in cur.fetchall():
     if pkg_id is None:
-        continue  # bỏ khách chưa có package recommendation
+        continue 
     keywords = []
     if msgs:
         keywords = [str(m).lower() for m in msgs if isinstance(m, str)]
@@ -58,7 +58,7 @@ conn.close()
 
 df = pd.DataFrame(rows)
 
-# Nếu không có dữ liệu để train thì bỏ qua, không raise
+
 if df.empty:
     print("⚠️ Không có dữ liệu đủ điều kiện để huấn luyện model. Bỏ qua...")
     exit(0)
@@ -69,12 +69,11 @@ if remove:
     print("⚠️ Bỏ các label ít mẫu:", remove)
 df = df[df['label'].isin(vc[vc >= 2].index)]
 
-# Nếu sau khi lọc mà vẫn trống thì cũng dừng nhẹ nhàng
+
 if df.empty:
     print("⚠️ Không còn dữ liệu sau khi lọc các label ít xuất hiện. Bỏ qua...")
     exit(0)
 
-# Chuẩn hóa dữ liệu
 mlb = MultiLabelBinarizer()
 Xk = mlb.fit_transform(df['chatKeywords'])
 X = pd.concat([
@@ -83,7 +82,6 @@ X = pd.concat([
 ], axis=1)
 y = df['label']
 
-# Chia tập train/test
 n_samples = len(y)
 n_classes = y.nunique()
 default_frac = 0.2
@@ -104,16 +102,13 @@ except ValueError as e:
         X, y, test_size=test_frac, random_state=42, stratify=None
     )
 
-# Train mô hình
 clf = RandomForestClassifier(n_estimators=100, random_state=42, class_weight='balanced')
 clf.fit(X_train, y_train)
 
-# Đánh giá
 y_pred = clf.predict(X_test)
 print("✅ Accuracy:", accuracy_score(y_test, y_pred))
 print("📊 Classification Report:\n", classification_report(y_test, y_pred, zero_division=0))
 
-# Confusion matrix
 cm = confusion_matrix(y_test, y_pred, labels=clf.classes_)
 plt.figure(figsize=(10, 6))
 sns.heatmap(cm, annot=True, fmt='d', xticklabels=clf.classes_, yticklabels=clf.classes_)
@@ -123,7 +118,6 @@ plt.title("Confusion Matrix")
 plt.tight_layout()
 plt.savefig("model/confusion_matrix.png")
 
-# Save model
 joblib.dump(clf, 'model/recommendation_model.pkl')
 joblib.dump(mlb, 'model/keyword_vectorizer.pkl')
 print("✅ Models saved under ./model/")
