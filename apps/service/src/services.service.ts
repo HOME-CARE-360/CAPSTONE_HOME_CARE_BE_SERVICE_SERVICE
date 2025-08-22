@@ -70,5 +70,8 @@ export class ServicesService {
         return data
 
     }
+    async getListSuggestionDevice(customerId: number) {
+        await this.servicesRepository.getListSuggestionDevice(customerId)
+    }
 
 }

@@ -36,5 +36,13 @@ export class ServicesController {
       data
     }
   }
+  @MessagePattern({ cmd: 'get-suggestion' })
 
+  async getSuggestionDevice(@Payload() { customerId }: { customerId: number }) {
+    const data = await this.servicesService.getListSuggestionDevice(customerId)
+    return {
+      message: `Get suggestion device successfully`,
+      data
+    }
+  }
 }

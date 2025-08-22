@@ -207,4 +207,19 @@ export class ShareServicesRepository {
         }
 
     }
+    async getListSuggestionDevice(customerId: number) {
+        return await this.prismaService.assetSuggestion.findMany(
+            {
+                where: {
+                    CustomerAsset: {
+                        customerId
+                    }
+                },
+                include: {
+                    ExternalProduct: true
+
+                }
+            }
+        )
+    }
 }
