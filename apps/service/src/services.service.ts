@@ -49,6 +49,7 @@ export class ServicesService {
     // }
     async getListService(props: GetServicesQueryType) {
         console.log(props);
+        console.log("cc");
 
         const data = await this.servicesRepository.list({
             page: props.page,
