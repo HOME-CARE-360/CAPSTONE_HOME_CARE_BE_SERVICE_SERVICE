@@ -71,7 +71,7 @@ export class ServicesService {
 
     }
     async getListSuggestionDevice(customerId: number) {
-        await this.servicesRepository.getListSuggestionDevice(customerId)
+        return await this.servicesRepository.getListSuggestionDevice(customerId)
     }
 
 }

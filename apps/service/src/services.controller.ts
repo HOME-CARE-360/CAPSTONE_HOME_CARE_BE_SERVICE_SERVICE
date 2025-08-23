@@ -1,4 +1,4 @@
-import { Controller, } from "@nestjs/common";
+import { Controller } from "@nestjs/common";
 
 import { IsPublic } from "libs/common/src/decorator/auth.decorator";
 import { ZodSerializerDto } from "nestjs-zod";
@@ -37,7 +37,6 @@ export class ServicesController {
     }
   }
   @MessagePattern({ cmd: 'get-suggestion' })
-
   async getSuggestionDevice(@Payload() { customerId }: { customerId: number }) {
     const data = await this.servicesService.getListSuggestionDevice(customerId)
     return {
