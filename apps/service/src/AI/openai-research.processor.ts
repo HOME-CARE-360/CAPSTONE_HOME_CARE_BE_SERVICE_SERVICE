@@ -32,40 +32,74 @@ export class OpenAiResearchProcessor implements OnModuleInit, OnModuleDestroy {
 
         this.queue = new Queue(QUEUE_NAME, {
             connection: this.connection,
-            defaultJobOptions: { removeOnComplete: true, attempts: 1 },
+            defaultJobOptions: {
+                removeOnComplete: true,
+                attempts: Number(this.cfg.get('OPENAI_RESEARCH_ATTEMPTS') ?? 2),
+                backoff: { type: 'exponential', delay: Number(this.cfg.get('OPENAI_RESEARCH_BACKOFF_MS') ?? 10_000) },
+            },
         });
 
-        // Dọn repeat cũ để tránh trùng
         const olds = await this.queue.getRepeatableJobs();
-        for (const j of olds) await this.queue.removeRepeatableByKey(j.key);
+        for (const j of olds) {
+            try {
+                await this.queue.removeRepeatableByKey(j.key);
+                console.log(`[${QUEUE_NAME}] 🧹 removed old repeat:`, j.key);
+            } catch (e) {
+                console.warn(`[${QUEUE_NAME}] ⚠️ failed to remove repeat`, j.key, e);
+            }
+        }
 
-        // Worker: chạy research
         this.worker = new Worker(
             QUEUE_NAME,
             async (job: Job) => {
-                const { customerId = null, maxPerAsset = Number(process.env.MAX_PER_ASSET ?? 5) } = job.data ?? {};
+                const {
+                    customerId = null,
+                    maxPerAsset = Number(process.env.MAX_PER_ASSET ?? 5),
+                    timeoutMs = Number(this.cfg.get('OPENAI_RESEARCH_TIMEOUT_MS') ?? 15 * 60_000),
+                } = job.data ?? {};
+
                 const t0 = Date.now();
-                console.log(`[${QUEUE_NAME}] ▶️ START jobId=${job.id}`, { customerId, maxPerAsset });
-                const res = await this.research.researchAndSuggestForCustomer({ customerId, maxPerAsset });
-                console.log(`[${QUEUE_NAME}] ✅ DONE jobId=${job.id}`, res, `in ${Date.now() - t0}ms`);
+                console.log(`[${QUEUE_NAME}] ▶️ START jobId=${job.id}`, { customerId, maxPerAsset, timeoutMs });
+
+                try {
+                    const work = this.research.researchAndSuggestForCustomer({ customerId, maxPerAsset });
+
+                    const timed = new Promise((_, reject) =>
+                        setTimeout(() => reject(new Error(`Timeout after ${timeoutMs}ms`)), timeoutMs),
+                    );
+
+                    const res = await Promise.race([work, timed]);
+                    console.log(`[${QUEUE_NAME}] ✅ DONE jobId=${job.id}`, res, `in ${Date.now() - t0}ms`);
+                    return res;
+                } catch (err: any) {
+                    console.error(`[${QUEUE_NAME}] 🔴 ERROR jobId=${job.id}`, err?.message || err);
+                    throw err;
+                }
             },
-            { connection: this.connection, concurrency: Number(this.cfg.get('OPENAI_RESEARCH_CONCURRENCY') ?? 1) },
+            {
+                connection: this.connection,
+                concurrency: Number(this.cfg.get('OPENAI_RESEARCH_CONCURRENCY') ?? 1),
+            },
         );
+
         this.events = new QueueEvents(QUEUE_NAME, { connection: this.connection });
         this.events.on('added', (e) => console.log(`[${QUEUE_NAME}] ➕ added`, e.jobId, e.name));
         this.events.on('completed', (e) => console.log(`[${QUEUE_NAME}] 🟢 completed`, e.jobId));
         this.events.on('failed', (e) => console.error(`[${QUEUE_NAME}] 🔴 failed`, e.jobId, e.failedReason));
-        const CRON = '0 */2 * * *';
+
+        const CRON = this.cfg.get('OPENAI_RESEARCH_CRON') || '0 */2 * * *';
+        const TZ = this.cfg.get('CRON_TZ') || 'Asia/Ho_Chi_Minh';
+
         await this.queue.add(
-            'research-minute',
+            'research-2h',
             { customerId: null, maxPerAsset: Number(process.env.MAX_PER_ASSET ?? 5) },
             {
-                repeat: { pattern: CRON, tz: this.cfg.get('CRON_TZ') || 'Asia/Ho_Chi_Minh', jobId: 'openai-research@1m' },
+                repeat: { pattern: CRON, tz: TZ, jobId: 'openai-research@2h' },
                 removeOnComplete: true,
             } as JobsOptions,
         );
 
-        console.log(`[${QUEUE_NAME}] 🗓️ scheduler registered: ${CRON}`);
+        console.log(`[${QUEUE_NAME}] 🗓️ scheduler registered: ${CRON} (TZ=${TZ})`);
     }
 
     async onModuleDestroy() {

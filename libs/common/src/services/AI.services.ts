@@ -1,4 +1,3 @@
-
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from 'libs/common/src/services/prisma.service';
@@ -57,7 +56,6 @@ export class OpenAiResearchService {
         if (!this.OPENAI_KEY) throw new Error('Missing OPENAI_API_KEY');
     }
 
-    /** Public API: chạy cho 1 customer (hoặc tất cả) và ghi suggestion */
     async researchAndSuggestForCustomer(opts: { customerId?: number | null; maxPerAsset?: number } = {}) {
         const { customerId = null, maxPerAsset = Number(process.env.MAX_PER_ASSET ?? 5) } = opts;
 
@@ -79,20 +77,13 @@ export class OpenAiResearchService {
                 const portion = await this.searchCandidates(q);
                 raw.push(...portion);
             }
-            console.log("raw");
-
-            console.log(raw[0]);
 
             const dedup = new Map<string, Candidate>();
             for (const c of raw) if (c.url) dedup.set(`${c.source}::${c.url}`, c);
             const unique = Array.from(dedup.values()).slice(0, this.RESEARCH_MAX_CANDIDATES);
-            console.log("unique");
-            console.log(unique);
-
 
             const ranked = await this.rankWithOpenAI({
                 asset: {
-
                     brand: asset.brand ?? '',
                     model: asset.model ?? '',
                     category: asset.Category?.name ?? '',
@@ -101,10 +92,6 @@ export class OpenAiResearchService {
                 candidates: unique,
                 take: maxPerAsset,
             });
-            console.log("ranked");
-
-            console.log(ranked);
-
 
             let picked: Ranked[] = (ranked || [])
                 .filter(r => typeof r.score === 'number' && r.score >= this.MIN_SCORE)
@@ -115,7 +102,6 @@ export class OpenAiResearchService {
                 const ensuredUrl = r.url?.trim() || this.findUrlInCandidates(unique, r);
                 return { ...r, url: ensuredUrl! };
             }).filter(r => !!r.url);
-
 
             if (picked.length < maxPerAsset) {
                 const remain = unique
@@ -150,65 +136,79 @@ export class OpenAiResearchService {
                 picked = picked.concat(remain);
             }
 
+            picked = picked.slice(0, maxPerAsset);
 
-            for (const r of picked) {
-                if (!r.url) continue;
-                console.log(r.imageUrl);
+            const { keptCount } = await this.prisma.$transaction(async (tx) => {
+                const keepProductIds: number[] = [];
 
-                const product = await this.prisma.externalProduct.upsert({
-                    where: { source_url: { source: r.source, url: r.url } },
-                    update: {
-                        title: r.normalizedTitle ?? r.title,
-                        brand: r.normalizedBrand ?? r.brand,
-                        model: r.normalizedModel ?? r.model,
-                        categoryId: asset.categoryId,
-                        price: r.price,
-                        currency: r.currency ?? 'VND',
-                        discountPct: r.discountPct,
-                        releaseDate: r.releaseDate ? new Date(r.releaseDate) : undefined,
-                        scrapedAt: new Date(),
-                        updatedAt: new Date(),
-                        ...(r.imageUrl ? { imageUrl: r.imageUrl } : {}),
-                    },
-                    create: {
-                        source: r.source,
-                        url: r.url,
-                        title: r.normalizedTitle ?? r.title,
-                        imageUrl: r.imageUrl ?? null,
-                        brand: r.normalizedBrand ?? r.brand,
-                        model: r.normalizedModel ?? r.model,
-                        categoryId: asset.categoryId,
-                        price: r.price,
-                        currency: r.currency ?? 'VND',
-                        discountPct: r.discountPct,
-                        releaseDate: r.releaseDate ? new Date(r.releaseDate) : undefined,
-                        scrapedAt: new Date(),
-                        updatedAt: new Date(),
-                    },
-                });
+                for (const r of picked) {
+                    if (!r.url) continue;
 
-                await this.prisma.assetSuggestion.upsert({
-                    where: { customerAssetId_productId: { customerAssetId: asset.id, productId: product.id } },
-                    update: { score: r.score, reason: r.reason, status: 'NEW', updatedAt: new Date() },
-                    create: {
+                    const product = await tx.externalProduct.upsert({
+                        where: { source_url: { source: r.source, url: r.url } },
+                        update: {
+                            title: r.normalizedTitle ?? r.title,
+                            brand: r.normalizedBrand ?? r.brand,
+                            model: r.normalizedModel ?? r.model,
+                            categoryId: asset.categoryId,
+                            price: r.price,
+                            currency: r.currency ?? 'VND',
+                            discountPct: r.discountPct,
+                            releaseDate: r.releaseDate ? new Date(r.releaseDate) : undefined,
+                            scrapedAt: new Date(),
+                            updatedAt: new Date(),
+                            ...(r.imageUrl ? { imageUrl: r.imageUrl } : {}),
+                        },
+                        create: {
+                            source: r.source,
+                            url: r.url,
+                            title: r.normalizedTitle ?? r.title,
+                            imageUrl: r.imageUrl ?? null,
+                            brand: r.normalizedBrand ?? r.brand,
+                            model: r.normalizedModel ?? r.model,
+                            categoryId: asset.categoryId,
+                            price: r.price,
+                            currency: r.currency ?? 'VND',
+                            discountPct: r.discountPct,
+                            releaseDate: r.releaseDate ? new Date(r.releaseDate) : undefined,
+                            scrapedAt: new Date(),
+                            updatedAt: new Date(),
+                        },
+                    });
+
+                    keepProductIds.push(product.id);
+
+                    await tx.assetSuggestion.upsert({
+                        where: { customerAssetId_productId: { customerAssetId: asset.id, productId: product.id } },
+                        update: { score: r.score, reason: r.reason, status: 'NEW', updatedAt: new Date() },
+                        create: {
+                            customerAssetId: asset.id,
+                            productId: product.id,
+                            score: r.score,
+                            reason: r.reason,
+                            status: 'NEW',
+                            updatedAt: new Date(),
+                        },
+                    });
+                }
+
+                await tx.assetSuggestion.deleteMany({
+                    where: {
                         customerAssetId: asset.id,
-                        productId: product.id,
-                        score: r.score,
-                        reason: r.reason,
-                        status: 'NEW',
-                        updatedAt: new Date(),
+                        productId: { notIn: keepProductIds.length ? keepProductIds : [-1] },
                     },
                 });
 
-                createdOrUpdated++;
-            }
+                return { keptCount: keepProductIds.length };
+            });
 
-            console.log(`[OpenAI-Research] asset#${asset.id} queries=${queries.length} cand=${unique.length} inserted=${picked.length}`);
+            createdOrUpdated += keptCount;
+
+            console.log(`[OpenAI-Research] asset#${asset.id} queries=${queries.length} cand=${unique.length} kept=${picked.length}`);
         }
 
         return { success: true, assets: assets.length, createdOrUpdated, mode: this.MODE };
     }
-
 
     private buildQueriesFromAsset(asset: any): string[] {
         const brand = asset.brand ?? '';
@@ -241,10 +241,7 @@ export class OpenAiResearchService {
             }
 
             const items: any[] = json.shopping_results ?? [];
-
-
             const out: Candidate[] = [];
-
 
             for (const it of items) {
                 const productUrl = this.pickBestProductUrl(it);
@@ -261,7 +258,6 @@ export class OpenAiResearchService {
                 const { brand, model } = this.guessBrandModelFromTitle(it.title || '');
                 const source = (it?.source && typeof it.source === 'string') ? it.source : 'google';
 
-
                 out.push({
                     source,
                     url: productUrl,
@@ -276,11 +272,8 @@ export class OpenAiResearchService {
                     productId: it?.product_id,
                 });
             }
-            // out.map((item) => console.log(item.imageUrl))
-
             return out;
         }
-
 
         const now = Date.now();
         const rand = (min: number, max: number) => Math.round(min + Math.random() * (max - min));
@@ -317,7 +310,6 @@ export class OpenAiResearchService {
             },
         ];
     }
-
 
     private normalizeUrl(u?: string | null): string | undefined {
         if (!u) return undefined;
