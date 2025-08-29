@@ -15,6 +15,9 @@ import { ShareStaffRepository } from './repositories/shared-staff.repo';
 import { SharedCategoryRepository } from './repositories/shared-category.repo';
 import { ShareServicesRepository } from './repositories/shared-service.repo';
 import { OpenAiResearchService } from './services/AI.services';
+import { OpenAIService } from './services/openai.service';
+import { DbToolsService } from './services/db-tools.service';
+import { ChatService } from './services/chatAI.service';
 const sharedServices = [
   PrismaService,
   HashingService,
@@ -29,8 +32,8 @@ const sharedServices = [
   S3Service,
   ShareStaffRepository,
   SharedCategoryRepository,
-  ShareServicesRepository
-
+  ShareServicesRepository,
+  OpenAIService, DbToolsService, ChatService
 ]
 
 @Global()

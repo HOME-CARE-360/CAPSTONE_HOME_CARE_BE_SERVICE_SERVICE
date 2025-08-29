@@ -6,7 +6,6 @@ import { GetListCategoryQueryType } from "libs/common/src/request-response-type/
 @Controller('categories')
 export class CategoriesController {
     constructor(private readonly categoriesService: CategoriesService) { }
-
     // @UseGuards(AccessTokenGuard)
     @MessagePattern({ cmd: "get-list-category" })
     async getListCategories(@Payload() { query }: { query: GetListCategoryQueryType }) {

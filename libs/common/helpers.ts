@@ -63,3 +63,57 @@ export function handleZodError(error: any): ErrorResponse {
     throw new HttpException("Internal server error", HttpStatus.INTERNAL_SERVER_ERROR)
 }
 
+export const tools = [
+    {
+        type: 'function',
+        function: {
+            name: 'db_find_providers',
+            description: 'Query service providers by id, name or taxId',
+            parameters: {
+                type: 'object',
+                properties: {
+                    id: { type: 'number' },
+                    name: { type: 'string' },
+                    taxId: { type: 'string' },
+                    page: { type: 'number', minimum: 1 },
+                    size: { type: 'number', minimum: 1, maximum: 100 },
+                },
+            },
+        },
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'db_find_services',
+            description: 'Query services by id/name/providerId/categoryId',
+            parameters: {
+                type: 'object',
+                properties: {
+                    id: { type: 'number' },
+                    name: { type: 'string' },
+                    providerId: { type: 'number' },
+                    categoryId: { type: 'number' },
+                    page: { type: 'number', minimum: 1 },
+                    size: { type: 'number', minimum: 1, maximum: 100 },
+                },
+            },
+        },
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'db_find_categories',
+            description: 'Query categories by id/name/parentCategoryId',
+            parameters: {
+                type: 'object',
+                properties: {
+                    id: { type: 'number' },
+                    name: { type: 'string' },
+                    parentCategoryId: { type: 'number' },
+                    page: { type: 'number', minimum: 1 },
+                    size: { type: 'number', minimum: 1, maximum: 100 },
+                },
+            },
+        },
+    },
+];
