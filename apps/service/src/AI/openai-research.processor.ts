@@ -86,7 +86,7 @@ export class OpenAiResearchProcessor implements OnModuleInit, OnModuleDestroy {
         this.events.on('added', (e) => console.log(`[${QUEUE_NAME}] ➕ added`, e.jobId, e.name));
         this.events.on('completed', (e) => console.log(`[${QUEUE_NAME}] 🟢 completed`, e.jobId));
         this.events.on('failed', (e) => console.error(`[${QUEUE_NAME}] 🔴 failed`, e.jobId, e.failedReason));
-
+        //* * * * *
         const CRON = this.cfg.get('OPENAI_RESEARCH_CRON') || '0 */2 * * *';
         const TZ = this.cfg.get('CRON_TZ') || 'Asia/Ho_Chi_Minh';
 
