@@ -33,9 +33,7 @@ export class DbToolsService {
                 ...(providerId ? { providerId } : {}),
                 ...(categoryId ? { categoryId } : {}),
                 deletedAt: null,
-                NOT: {
-                    status: ServiceStatus.REJECTED
-                }
+                status: ServiceStatus.ACCEPTED
             },
             select: {
                 id: true,
