@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from './prisma.service';
+import { ServiceStatus } from '@prisma/client';
 
 @Injectable()
 export class DbToolsService {
@@ -32,6 +33,9 @@ export class DbToolsService {
                 ...(providerId ? { providerId } : {}),
                 ...(categoryId ? { categoryId } : {}),
                 deletedAt: null,
+                NOT: {
+                    status: ServiceStatus.REJECTED
+                }
             },
             select: {
                 id: true,
