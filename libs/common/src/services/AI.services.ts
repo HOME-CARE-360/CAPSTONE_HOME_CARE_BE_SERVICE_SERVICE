@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { RecommendationStatus } from '@prisma/client';
 import { PrismaService } from 'libs/common/src/services/prisma.service';
 import fetch from 'node-fetch';
 
@@ -38,25 +39,43 @@ export class OpenAiResearchService {
     private readonly MIN_SCORE: number;
     private readonly FETCH_PRODUCT_IMAGES: boolean;
 
+    private readonly SOFT_DELETE_SUGGESTIONS = true;
+
     constructor(
         private readonly cfg: ConfigService,
         private readonly prisma: PrismaService,
     ) {
-        this.OPENAI_KEY = this.cfg.get<string>('OPENAI_API_KEY') ?? process.env.OPENAI_API_KEY ?? '';
-        this.OPENAI_MODEL = this.cfg.get<string>('OPENAI_RESEARCH_MODEL') ?? 'gpt-4o-mini';
-        this.OPENAI_BASE = this.cfg.get<string>('OPENAI_BASE_URL') ?? 'https://api.openai.com/v1';
-        this.SERP_KEY = this.cfg.get<string>('SERPAPI_KEY') ?? process.env.SERPAPI_KEY;
-        this.MODE = (this.cfg.get<string>('RESEARCH_MODE')?.toLowerCase() as any) || (this.SERP_KEY ? 'serpapi' : 'mock');
+        this.OPENAI_KEY =
+            this.cfg.get<string>('OPENAI_API_KEY') ??
+            process.env.OPENAI_API_KEY ??
+            '';
+        this.OPENAI_MODEL =
+            this.cfg.get<string>('OPENAI_RESEARCH_MODEL') ?? 'gpt-4o-mini';
+        this.OPENAI_BASE =
+            this.cfg.get<string>('OPENAI_BASE_URL') ?? 'https://api.openai.com/v1';
+        this.SERP_KEY =
+            this.cfg.get<string>('SERPAPI_KEY') ?? process.env.SERPAPI_KEY;
+        this.MODE =
+            (this.cfg.get<string>('RESEARCH_MODE')?.toLowerCase() as any) ||
+            (this.SERP_KEY ? 'serpapi' : 'mock');
 
         this.RESEARCH_MAX_ASSETS = Number(this.cfg.get('RESEARCH_MAX_ASSETS') ?? 100);
-        this.RESEARCH_MAX_CANDIDATES = Number(this.cfg.get('RESEARCH_MAX_CANDIDATES') ?? 30);
-        this.MIN_SCORE = Number(this.cfg.get('MIN_SCORE') ?? 0.25);
-        this.FETCH_PRODUCT_IMAGES = (this.cfg.get('SERPAPI_FETCH_PRODUCT_IMAGES') ?? 'false').toString().toLowerCase() === 'true';
+        this.RESEARCH_MAX_CANDIDATES = Number(
+            this.cfg.get('RESEARCH_MAX_CANDIDATES') ?? 30,
+        );
+        this.MIN_SCORE = Number(this.cfg.get('MIN_SCORE') ?? 0.2);
+        this.FETCH_PRODUCT_IMAGES =
+            (this.cfg.get('SERPAPI_FETCH_PRODUCT_IMAGES') ?? 'false')
+                .toString()
+                .toLowerCase() === 'true';
 
         if (!this.OPENAI_KEY) throw new Error('Missing OPENAI_API_KEY');
     }
 
-    async researchAndSuggestForCustomer(opts: { customerId?: number | null; maxPerAsset?: number } = {}) {
+    async researchAndSuggestForCustomer(opts: {
+        customerId?: number | null;
+        maxPerAsset?: number;
+    } = {}) {
         const { customerId = null, maxPerAsset = Number(process.env.MAX_PER_ASSET ?? 5) } = opts;
 
         const where = customerId ? { customerId } : {};
@@ -79,8 +98,19 @@ export class OpenAiResearchService {
             }
 
             const dedup = new Map<string, Candidate>();
-            for (const c of raw) if (c.url) dedup.set(`${c.source}::${c.url}`, c);
-            const unique = Array.from(dedup.values()).slice(0, this.RESEARCH_MAX_CANDIDATES);
+            for (const c of raw) {
+                const canonicalUrl = this.canonicalizeProductUrl(c.url);
+                if (!canonicalUrl) continue;
+
+                const key =
+                    (c.productId && `${c.source}::pid::${c.productId}`) ||
+                    `${c.source}::url::${canonicalUrl}`;
+                dedup.set(key, { ...c, url: canonicalUrl });
+            }
+            const unique = Array.from(dedup.values()).slice(
+                0,
+                this.RESEARCH_MAX_CANDIDATES,
+            );
 
             const ranked = await this.rankWithOpenAI({
                 asset: {
@@ -94,18 +124,22 @@ export class OpenAiResearchService {
             });
 
             let picked: Ranked[] = (ranked || [])
-                .filter(r => typeof r.score === 'number' && r.score >= this.MIN_SCORE)
+                .filter((r) => typeof r.score === 'number' && r.score >= this.MIN_SCORE)
                 .sort((a, b) => b.score - a.score)
                 .slice(0, maxPerAsset);
 
-            picked = picked.map(r => {
-                const ensuredUrl = r.url?.trim() || this.findUrlInCandidates(unique, r);
-                return { ...r, url: ensuredUrl! };
-            }).filter(r => !!r.url);
+            picked = picked
+                .map((r) => {
+                    const ensuredUrl =
+                        this.canonicalizeProductUrl(r.url) ||
+                        this.findUrlInCandidates(unique, r);
+                    return ensuredUrl ? { ...r, url: ensuredUrl } : null;
+                })
+                .filter(Boolean) as Ranked[];
 
             if (picked.length < maxPerAsset) {
                 const remain = unique
-                    .filter(c => !picked.some(p => p.url === c.url))
+                    .filter((c) => !picked.some((p) => p.url === c.url))
                     .map<Ranked>((c) => {
                         const sameBrand = this.same(asset.brand, c.brand);
                         const sameModel = this.same(asset.model, c.model);
@@ -119,7 +153,9 @@ export class OpenAiResearchService {
                             sameModel ? 'Cùng model/dòng' : null,
                             c.discountPct ? `Ưu đãi ~${c.discountPct}%` : null,
                             c.releaseDate ? 'Có ngày phát hành' : null,
-                        ].filter(Boolean).join(' · ');
+                        ]
+                            .filter(Boolean)
+                            .join(' · ');
 
                         return {
                             ...c,
@@ -144,8 +180,25 @@ export class OpenAiResearchService {
                 for (const r of picked) {
                     if (!r.url) continue;
 
+                    const whereByProductId =
+                        r.productId && r.productId.trim()
+                            ? {
+                                source_productId: {
+                                    source: r.source,
+                                    productId: r.productId.trim(),
+                                },
+                            }
+                            : null;
+
+                    const whereByUrl = {
+                        source_url: {
+                            source: r.source,
+                            url: r.url,
+                        },
+                    } as const;
+
                     const product = await tx.externalProduct.upsert({
-                        where: { source_url: { source: r.source, url: r.url } },
+                        where: (whereByProductId ?? whereByUrl) as any,
                         update: {
                             title: r.normalizedTitle ?? r.title,
                             brand: r.normalizedBrand ?? r.brand,
@@ -154,6 +207,8 @@ export class OpenAiResearchService {
                             price: r.price,
                             currency: r.currency ?? 'VND',
                             discountPct: r.discountPct,
+
+                            productId: r.productId ?? undefined,
                             releaseDate: r.releaseDate ? new Date(r.releaseDate) : undefined,
                             scrapedAt: new Date(),
                             updatedAt: new Date(),
@@ -170,6 +225,7 @@ export class OpenAiResearchService {
                             price: r.price,
                             currency: r.currency ?? 'VND',
                             discountPct: r.discountPct,
+                            productId: r.productId ?? null,
                             releaseDate: r.releaseDate ? new Date(r.releaseDate) : undefined,
                             scrapedAt: new Date(),
                             updatedAt: new Date(),
@@ -179,8 +235,18 @@ export class OpenAiResearchService {
                     keepProductIds.push(product.id);
 
                     await tx.assetSuggestion.upsert({
-                        where: { customerAssetId_productId: { customerAssetId: asset.id, productId: product.id } },
-                        update: { score: r.score, reason: r.reason, status: 'NEW', updatedAt: new Date() },
+                        where: {
+                            customerAssetId_productId: {
+                                customerAssetId: asset.id,
+                                productId: product.id,
+                            },
+                        },
+                        update: {
+                            score: r.score,
+                            reason: r.reason,
+                            status: 'NEW',
+                            updatedAt: new Date(),
+                        },
                         create: {
                             customerAssetId: asset.id,
                             productId: product.id,
@@ -192,22 +258,43 @@ export class OpenAiResearchService {
                     });
                 }
 
-                await tx.assetSuggestion.deleteMany({
-                    where: {
-                        customerAssetId: asset.id,
-                        productId: { notIn: keepProductIds.length ? keepProductIds : [-1] },
-                    },
-                });
+                if (keepProductIds.length > 0) {
+                    if (this.SOFT_DELETE_SUGGESTIONS) {
+                        await tx.assetSuggestion.updateMany({
+                            where: {
+                                customerAssetId: asset.id,
+                                productId: { notIn: keepProductIds },
+                                status: { notIn: ['SAVED', 'LIKED'] },
+                            },
+                            data: { status: RecommendationStatus.STALE, updatedAt: new Date() },
+                        });
+                    } else {
+                        await tx.assetSuggestion.deleteMany({
+                            where: {
+                                customerAssetId: asset.id,
+                                productId: { notIn: keepProductIds },
+                                status: { notIn: ['SAVED', 'LIKED'] },
+                            },
+                        });
+                    }
+                }
 
                 return { keptCount: keepProductIds.length };
             });
 
             createdOrUpdated += keptCount;
 
-            console.log(`[OpenAI-Research] asset#${asset.id} queries=${queries.length} cand=${unique.length} kept=${picked.length}`);
+            console.log(
+                `[OpenAI-Research] asset#${asset.id} queries=${queries.length} cand=${unique.length} kept=${picked.length}`,
+            );
         }
 
-        return { success: true, assets: assets.length, createdOrUpdated, mode: this.MODE };
+        return {
+            success: true,
+            assets: assets.length,
+            createdOrUpdated,
+            mode: this.MODE,
+        };
     }
 
     private buildQueriesFromAsset(asset: any): string[] {
@@ -245,22 +332,25 @@ export class OpenAiResearchService {
 
             for (const it of items) {
                 const productUrl = this.pickBestProductUrl(it);
-                if (!productUrl) continue;
+                const canonicalUrl = this.canonicalizeProductUrl(productUrl);
+                if (!canonicalUrl) continue;
 
                 const thumb =
                     this.normalizeUrl(it?.thumbnail) ||
                     this.normalizeUrl(it?.serpapi_thumbnails?.[0]) ||
                     this.normalizeUrl(it?.thumbnails?.[0]);
 
-                const imageUrl = thumb ?? (await this.pickImageUrl(it)); // fallback nếu thiếu
+                const imageUrl = thumb ?? (await this.pickImageUrl(it));
 
                 const price = this.parsePriceToNumber(it.price ?? it.extracted_price);
                 const { brand, model } = this.guessBrandModelFromTitle(it.title || '');
-                const source = (it?.source && typeof it.source === 'string') ? it.source : 'google';
+                const source =
+                    it?.source && typeof it.source === 'string' ? it.source : 'google';
+                const productId = it?.product_id as string | undefined;
 
                 out.push({
                     source,
-                    url: productUrl,
+                    url: canonicalUrl,
                     title: it.title,
                     imageUrl,
                     brand,
@@ -269,45 +359,29 @@ export class OpenAiResearchService {
                     currency: 'VND',
                     discountPct: undefined,
                     releaseDate: undefined,
-                    productId: it?.product_id,
+                    productId,
                 });
             }
             return out;
         }
 
+        const mk = (i: number, title: string, price: number, disc: number, rls?: string): Candidate => ({
+            source: 'mock',
+            url: `https://mock.local/buy?q=${encodeURIComponent(query)}&i=${i}`, // ổn định
+            title,
+            imageUrl: `https://picsum.photos/seed/${encodeURIComponent(query)}-${i}/640/480`,
+            price,
+            currency: 'VND',
+            discountPct: disc,
+            releaseDate: rls,
+        });
+
         const now = Date.now();
-        const rand = (min: number, max: number) => Math.round(min + Math.random() * (max - min));
+        const days = (d: number) => new Date(now - d * 86400000).toISOString();
         return [
-            {
-                source: 'mock',
-                url: `https://mock.local/buy?p=${encodeURIComponent(query)}&i=1`,
-                title: `${query} – Giảm ${rand(10, 25)}%`,
-                imageUrl: 'https://picsum.photos/seed/a/640/480',
-                price: rand(5_000_000, 12_000_000),
-                currency: 'VND',
-                discountPct: rand(10, 25),
-                releaseDate: new Date(now - rand(10, 300) * 86400000).toISOString(),
-            },
-            {
-                source: 'mock',
-                url: `https://mock.local/buy?p=${encodeURIComponent(query)}&i=2`,
-                title: `${query} đời 2025 – Flash Sale`,
-                imageUrl: 'https://picsum.photos/seed/b/640/480',
-                price: rand(6_000_000, 14_000_000),
-                currency: 'VND',
-                discountPct: rand(5, 18),
-                releaseDate: new Date(now - rand(10, 200) * 86400000).toISOString(),
-            },
-            {
-                source: 'mock',
-                url: `https://mock.local/buy?p=${encodeURIComponent(query)}&i=3`,
-                title: `${query} ưu đãi online`,
-                imageUrl: 'https://picsum.photos/seed/c/640/480',
-                price: rand(6_000_000, 9_000_000),
-                currency: 'VND',
-                discountPct: rand(0, 15),
-                releaseDate: undefined,
-            },
+            mk(1, `${query} – Giảm 15%`, 8_900_000, 15, days(120)),
+            mk(2, `${query} đời 2025 – Flash Sale`, 9_900_000, 12, days(80)),
+            mk(3, `${query} ưu đãi online`, 7_900_000, 8),
         ];
     }
 
@@ -318,6 +392,37 @@ export class OpenAiResearchService {
         if (s.startsWith('//')) s = 'https:' + s;
         if (!/^https?:\/\//i.test(s)) return undefined;
         return s;
+    }
+
+    private canonicalizeProductUrl(raw?: string | null): string | undefined {
+        const u = this.normalizeUrl(raw ?? undefined);
+        if (!u) return undefined;
+        try {
+            const url = new URL(u);
+            const drop = new Set([
+                'utm_source',
+                'utm_medium',
+                'utm_campaign',
+                'utm_term',
+                'utm_content',
+                'utm_id',
+                'gclid',
+                'fbclid',
+                '_branch_match_id',
+                'mc_eid',
+                'mc_cid',
+            ]);
+            [...url.searchParams.keys()].forEach((k) => {
+                if (drop.has(k.toLowerCase())) url.searchParams.delete(k);
+            });
+            url.host = url.host.toLowerCase();
+            if (url.pathname.endsWith('/') && url.pathname !== '/') {
+                url.pathname = url.pathname.replace(/\/+$/, '');
+            }
+            return url.toString();
+        } catch {
+            return u;
+        }
     }
 
     private isLikelyImageUrl(u: string): boolean {
@@ -349,14 +454,25 @@ export class OpenAiResearchService {
         return undefined;
     }
 
-    private async fetchSerpProductImages(productId?: string, serpApiProductUrl?: string): Promise<string[]> {
+    private async fetchSerpProductImages(
+        productId?: string,
+        serpApiProductUrl?: string,
+    ): Promise<string[]> {
         if (!this.FETCH_PRODUCT_IMAGES || !this.SERP_KEY) return [];
         const endpoints: string[] = [];
 
         if (serpApiProductUrl) endpoints.push(serpApiProductUrl);
         if (productId) {
-            endpoints.push(`https://serpapi.com/search.json?engine=google_product&product_id=${encodeURIComponent(productId)}&hl=vi&gl=vn&api_key=${this.SERP_KEY}`);
-            endpoints.push(`https://serpapi.com/search.json?engine=google_shopping_product&product_id=${encodeURIComponent(productId)}&hl=vi&gl=vn&api_key=${this.SERP_KEY}`);
+            endpoints.push(
+                `https://serpapi.com/search.json?engine=google_product&product_id=${encodeURIComponent(
+                    productId,
+                )}&hl=vi&gl=vn&api_key=${this.SERP_KEY}`,
+            );
+            endpoints.push(
+                `https://serpapi.com/search.json?engine=google_shopping_product&product_id=${encodeURIComponent(
+                    productId,
+                )}&hl=vi&gl=vn&api_key=${this.SERP_KEY}`,
+            );
         }
 
         const imgs = new Set<string>();
@@ -379,7 +495,8 @@ export class OpenAiResearchService {
                     for (const p of json.images) push(p?.link || p?.source || p);
                 }
                 if (Array.isArray(json?.images_results)) {
-                    for (const p of json.images_results) push(p?.original || p?.thumbnail);
+                    for (const p of json.images_results)
+                        push(p?.original || p?.thumbnail);
                 }
                 push(json?.thumbnail);
             } catch {
@@ -409,10 +526,28 @@ export class OpenAiResearchService {
         return undefined;
     }
 
-    private guessBrandModelFromTitle(title: string): { brand?: string; model?: string } {
+    private guessBrandModelFromTitle(
+        title: string,
+    ): { brand?: string; model?: string } {
         const commonVi = new Set([
-            'điều', 'hòa', 'máy', 'lạnh', 'tủ', 'giặt', 'nồi', 'cơm', 'quạt', 'bàn', 'ghế',
-            'cao', 'cấp', 'chính', 'hãng', 'inverter', 'điện', 'nước'
+            'điều',
+            'hòa',
+            'máy',
+            'lạnh',
+            'tủ',
+            'giặt',
+            'nồi',
+            'cơm',
+            'quạt',
+            'bàn',
+            'ghế',
+            'cao',
+            'cấp',
+            'chính',
+            'hãng',
+            'inverter',
+            'điện',
+            'nước',
         ]);
         const toks = (title || '').split(/\s+/).filter(Boolean);
         let brand: string | undefined;
@@ -421,10 +556,14 @@ export class OpenAiResearchService {
         for (const tok of toks) {
             const t = tok.toLowerCase();
             if (commonVi.has(t)) continue;
-            // eslint-disable-next-line no-useless-escape
-            if (!brand && /^[A-Z][A-Za-z0-9\-]{2,}$/.test(tok)) { brand = tok; continue; }
-            // eslint-disable-next-line no-useless-escape
-            if (brand && !model && /^[A-Za-z0-9\-]{2,}$/.test(tok)) { model = tok; break; }
+            if (!brand && /^[A-Z][A-Za-z0-9-]{2,}$/.test(tok)) {
+                brand = tok;
+                continue;
+            }
+            if (brand && !model && /^[A-Za-z0-9-]{2,}$/.test(tok)) {
+                model = tok;
+                break;
+            }
         }
         return { brand, model };
     }
@@ -440,11 +579,12 @@ export class OpenAiResearchService {
         cands: Candidate[],
         r: { url?: string; title?: string; normalizedTitle?: string },
     ): string | undefined {
-        if (r.url && r.url.trim() && !this.isLikelyImageUrl(r.url)) return r.url.trim();
+        const url = this.canonicalizeProductUrl(r.url);
+        if (url && !this.isLikelyImageUrl(url)) return url;
         const titleKey = (r.normalizedTitle || r.title || '').trim();
         if (!titleKey) return undefined;
-        const found = cands.find(c => !!c.url && c.title === titleKey);
-        return found?.url;
+        const found = cands.find((c) => !!c.url && c.title === titleKey);
+        return found?.url ? this.canonicalizeProductUrl(found.url) : undefined;
     }
 
     private async rankWithOpenAI(input: {
@@ -497,7 +637,10 @@ export class OpenAiResearchService {
 
         const res = await fetch(`${this.OPENAI_BASE}/chat/completions`, {
             method: 'POST',
-            headers: { Authorization: `Bearer ${this.OPENAI_KEY}`, 'Content-Type': 'application/json' },
+            headers: {
+                Authorization: `Bearer ${this.OPENAI_KEY}`,
+                'Content-Type': 'application/json',
+            },
             body: JSON.stringify(body),
         });
 
