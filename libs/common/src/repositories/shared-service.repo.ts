@@ -208,11 +208,17 @@ export class ShareServicesRepository {
 
     }
     async getListSuggestionDevice(customerId: number) {
-        return await this.prismaService.assetSuggestion.findMany(
+        const customerAssets = await this.prismaService.customerAsset.findMany({
+            where: {
+                customerId
+            }
+        })
+        console.log(customerAssets);
+        const suggest = await this.prismaService.assetSuggestion.findMany(
             {
                 where: {
-                    CustomerAsset: {
-                        customerId
+                    customerAssetId: {
+                        in: customerAssets.map((item) => item.id)
                     }
                 },
                 include: {
@@ -221,5 +227,8 @@ export class ShareServicesRepository {
                 }
             }
         )
+        console.log(suggest);
+
+        return suggest
     }
 }
