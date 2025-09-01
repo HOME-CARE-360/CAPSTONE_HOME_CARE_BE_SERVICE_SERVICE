@@ -3,6 +3,7 @@ import { Queue, Worker, QueueEvents, JobsOptions, Job } from 'bullmq';
 import { ConfigService } from '@nestjs/config';
 import IORedis from 'ioredis';
 import { OpenAiResearchService } from 'libs/common/src/services/AI.services';
+import { PrismaService } from 'libs/common/src/services/prisma.service';
 
 const QUEUE_NAME = 'openai-research';
 
@@ -16,6 +17,7 @@ export class OpenAiResearchProcessor implements OnModuleInit, OnModuleDestroy {
     constructor(
         private readonly cfg: ConfigService,
         private readonly research: OpenAiResearchService,
+        private readonly prismaService: PrismaService
     ) { }
 
     async onModuleInit() {
@@ -38,7 +40,11 @@ export class OpenAiResearchProcessor implements OnModuleInit, OnModuleDestroy {
                 backoff: { type: 'exponential', delay: Number(this.cfg.get('OPENAI_RESEARCH_BACKOFF_MS') ?? 10_000) },
             },
         });
-
+        const sys = await this.prismaService.systemConfig.findFirst({
+            where: {
+                key: "SUGGEST_DEVICE_CRON"
+            }
+        })
         const olds = await this.queue.getRepeatableJobs();
         for (const j of olds) {
             try {
@@ -86,7 +92,7 @@ export class OpenAiResearchProcessor implements OnModuleInit, OnModuleDestroy {
         this.events.on('added', (e) => console.log(`[${QUEUE_NAME}] ➕ added`, e.jobId, e.name));
         this.events.on('completed', (e) => console.log(`[${QUEUE_NAME}] 🟢 completed`, e.jobId));
         this.events.on('failed', (e) => console.error(`[${QUEUE_NAME}] 🔴 failed`, e.jobId, e.failedReason));
-        const CRON = this.cfg.get('OPENAI_RESEARCH_CRON') || '0 */2 * * *';
+        const CRON = sys?.value;
         const TZ = this.cfg.get('CRON_TZ') || 'Asia/Ho_Chi_Minh';
 
         await this.queue.add(
