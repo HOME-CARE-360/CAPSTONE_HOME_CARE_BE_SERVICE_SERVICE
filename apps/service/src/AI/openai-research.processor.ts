@@ -1,24 +1,43 @@
 import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
-import { Queue, Worker, QueueEvents, JobsOptions, Job } from 'bullmq';
+import { Queue, Worker, QueueEvents, JobsOptions, Job, RepeatOptions } from 'bullmq';
 import { ConfigService } from '@nestjs/config';
 import IORedis from 'ioredis';
 import { OpenAiResearchService } from 'libs/common/src/services/AI.services';
 import { PrismaService } from 'libs/common/src/services/prisma.service';
+// (tuỳ chọn) để validate cron
+// import * as cronParser from 'cron-parser';
 
 const QUEUE_NAME = 'openai-research';
+const REPEAT_JOB_NAME = 'research-2h';
+const REPEAT_JOB_ID = 'openai-research@2h';
 
 @Injectable()
 export class OpenAiResearchProcessor implements OnModuleInit, OnModuleDestroy {
     private queue!: Queue;
     private worker!: Worker;
     private events!: QueueEvents;
-    private connection!: IORedis;
+
+    private queueConn!: IORedis;
+    private workerConn!: IORedis;
+    private eventsConn!: IORedis;
+
+    private cronWatcher?: NodeJS.Timeout;
+    private lastAppliedCron?: string;
+    private lastAppliedTz?: string;
 
     constructor(
         private readonly cfg: ConfigService,
         private readonly research: OpenAiResearchService,
-        private readonly prismaService: PrismaService
+        private readonly prisma: PrismaService,
     ) { }
+
+    private buildConn(REDIS_URL: string) {
+        return new IORedis(REDIS_URL, {
+            maxRetriesPerRequest: null,
+            enableReadyCheck: false,
+            tls: REDIS_URL.startsWith('rediss://') ? {} : undefined,
+        });
+    }
 
     async onModuleInit() {
         const REDIS_URL =
@@ -26,34 +45,19 @@ export class OpenAiResearchProcessor implements OnModuleInit, OnModuleDestroy {
             this.cfg.get<string>('REDIS_HOST') ??
             'redis://127.0.0.1:6379';
 
-        this.connection = new IORedis(REDIS_URL, {
-            maxRetriesPerRequest: null,
-            enableReadyCheck: false,
-            tls: REDIS_URL.startsWith('rediss://') ? {} : undefined,
-        });
+        // mỗi thành phần 1 connection
+        this.queueConn = this.buildConn(REDIS_URL);
+        this.workerConn = this.buildConn(REDIS_URL);
+        this.eventsConn = this.buildConn(REDIS_URL);
 
         this.queue = new Queue(QUEUE_NAME, {
-            connection: this.connection,
+            connection: this.queueConn,
             defaultJobOptions: {
                 removeOnComplete: true,
                 attempts: Number(this.cfg.get('OPENAI_RESEARCH_ATTEMPTS') ?? 2),
                 backoff: { type: 'exponential', delay: Number(this.cfg.get('OPENAI_RESEARCH_BACKOFF_MS') ?? 10_000) },
             },
         });
-        const sys = await this.prismaService.systemConfig.findFirst({
-            where: {
-                key: "SUGGEST_DEVICE_CRON"
-            }
-        })
-        const olds = await this.queue.getRepeatableJobs();
-        for (const j of olds) {
-            try {
-                await this.queue.removeRepeatableByKey(j.key);
-                console.log(`[${QUEUE_NAME}] 🧹 removed old repeat:`, j.key);
-            } catch (e) {
-                console.warn(`[${QUEUE_NAME}] ⚠️ failed to remove repeat`, j.key, e);
-            }
-        }
 
         this.worker = new Worker(
             QUEUE_NAME,
@@ -69,11 +73,9 @@ export class OpenAiResearchProcessor implements OnModuleInit, OnModuleDestroy {
 
                 try {
                     const work = this.research.researchAndSuggestForCustomer({ customerId, maxPerAsset });
-
                     const timed = new Promise((_, reject) =>
                         setTimeout(() => reject(new Error(`Timeout after ${timeoutMs}ms`)), timeoutMs),
                     );
-
                     const res = await Promise.race([work, timed]);
                     console.log(`[${QUEUE_NAME}] ✅ DONE jobId=${job.id}`, res, `in ${Date.now() - t0}ms`);
                     return res;
@@ -82,35 +84,68 @@ export class OpenAiResearchProcessor implements OnModuleInit, OnModuleDestroy {
                     throw err;
                 }
             },
-            {
-                connection: this.connection,
-                concurrency: Number(this.cfg.get('OPENAI_RESEARCH_CONCURRENCY') ?? 1),
-            },
+            { connection: this.workerConn, concurrency: Number(this.cfg.get('OPENAI_RESEARCH_CONCURRENCY') ?? 1) },
         );
 
-        this.events = new QueueEvents(QUEUE_NAME, { connection: this.connection });
+        this.worker.on('error', (e) => console.error(`[${QUEUE_NAME}] Worker error`, e));
+
+        this.events = new QueueEvents(QUEUE_NAME, { connection: this.eventsConn });
         this.events.on('added', (e) => console.log(`[${QUEUE_NAME}] ➕ added`, e.jobId, e.name));
         this.events.on('completed', (e) => console.log(`[${QUEUE_NAME}] 🟢 completed`, e.jobId));
         this.events.on('failed', (e) => console.error(`[${QUEUE_NAME}] 🔴 failed`, e.jobId, e.failedReason));
-        const CRON = sys?.value;
+
+        // lần đầu: đọc cron và ensure scheduler
+        await this.ensureSchedulerFromDb();
+
+        // watcher: 30s/lần kiểm tra thay đổi và đồng bộ vào Redis
+        const intervalMs = Number(this.cfg.get('CRON_WATCH_INTERVAL_MS') ?? 30_000);
+        // eslint-disable-next-line @typescript-eslint/no-misused-promises
+        this.cronWatcher = setInterval(() => this.ensureSchedulerFromDb().catch(console.error), intervalMs);
+    }
+
+    private async ensureSchedulerFromDb() {
+        const sys = await this.prisma.systemConfig.findFirst({ where: { key: 'SUGGEST_DEVICE_CRON' } });
+        const CRON = sys?.value || '0 */2 * * *'; // fallback
         const TZ = this.cfg.get('CRON_TZ') || 'Asia/Ho_Chi_Minh';
 
-        await this.queue.add(
-            'research-2h',
-            { customerId: null, maxPerAsset: Number(process.env.MAX_PER_ASSET ?? 5) },
-            {
-                repeat: { pattern: CRON, tz: TZ, jobId: 'openai-research@2h' },
-                removeOnComplete: true,
-            } as JobsOptions,
-        );
+        // nếu chưa đổi gì thì thôi
+        if (this.lastAppliedCron === CRON && this.lastAppliedTz === TZ) return;
 
-        console.log(`[${QUEUE_NAME}] 🗓️ scheduler registered: ${CRON} (TZ=${TZ})`);
+        // (tuỳ chọn) validate cron
+        // try { cronParser.parseExpression(CRON); } catch { throw new Error(`Invalid SUGGEST_DEVICE_CRON="${CRON}"`); }
+
+        // tìm đúng repeat của mình
+        const repeats = await this.queue.getRepeatableJobs();
+        const mine = repeats.find((r) => r.name === REPEAT_JOB_NAME && r.id === REPEAT_JOB_ID);
+
+        // nếu đã tồn tại và pattern/tz khác, xoá đúng key cũ
+        if (mine && (mine.pattern !== CRON || (mine.tz ?? TZ) !== TZ)) {
+            try {
+                await this.queue.removeRepeatableByKey(mine.key);
+                console.log(`[${QUEUE_NAME}] 🧹 removed old repeat:`, mine.key);
+            } catch (e) {
+                console.warn(`[${QUEUE_NAME}] ⚠️ failed to remove old repeat`, mine.key, e);
+            }
+        }
+
+        // nếu chưa có (hoặc vừa xoá), add lại theo pattern mới
+        if (!mine || mine.pattern !== CRON || (mine.tz ?? TZ) !== TZ) {
+            const repeat: RepeatOptions = { pattern: CRON, tz: TZ, jobId: REPEAT_JOB_ID };
+            const opts: JobsOptions = { repeat, removeOnComplete: true };
+            await this.queue.add(REPEAT_JOB_NAME, { customerId: null, maxPerAsset: Number(process.env.MAX_PER_ASSET ?? 5) }, opts);
+            console.log(`[${QUEUE_NAME}] 🗓️ scheduler applied: ${CRON} (TZ=${TZ})`);
+            this.lastAppliedCron = CRON;
+            this.lastAppliedTz = TZ;
+        }
     }
 
     async onModuleDestroy() {
+        if (this.cronWatcher) clearInterval(this.cronWatcher);
         await this.worker?.close();
         await this.events?.close();
         await this.queue?.close();
-        await this.connection?.quit();
+        await this.queueConn?.quit();
+        await this.workerConn?.quit();
+        await this.eventsConn?.quit();
     }
 }
